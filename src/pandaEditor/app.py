@@ -235,6 +235,8 @@ class App( p3d.wx.App ):
         nps = [comp for comp in self.selection.nps if type( comp ) == pm.NodePath]
         if nps:
             base.edCamera.Frame( nps )
+        else:
+            base.edCamera.Frame( [base.scene.rootNp] )
             
     def OnUpdate( self, msg ):
         """
@@ -257,7 +259,6 @@ class App( p3d.wx.App ):
         
         # Close the current scene if there is one
         if hasattr( self, 'scene' ):
-            self.game.pluginMgr.OnSceneClose()
             self.scene.Close()
             
         # Create a new scene
@@ -292,6 +293,15 @@ class App( p3d.wx.App ):
         wrprCls = base.game.nodeMgr.GetWrapperByName( typeStr )
         wrpr = wrprCls.Create( *args, **kwargs )
         wrpr.SetDefaultValues()
+        wrpr.SetParent( wrpr.GetDefaultParent() )
+        
+        # Bit of a hack. Sometimes a wrapper can create multiple components 
+        # when Create is called. Make sure to set default values on all the 
+        # components that were created.
+        if hasattr( wrpr, 'extraNps' ):
+            for np in wrpr.extraNps:
+                eWrpr = base.game.nodeMgr.Wrap( np )
+                eWrpr.SetDefaultValues()
         cmds.Add( [wrpr.data] )
                 
     def AddShader( self, filePath, np=None ):

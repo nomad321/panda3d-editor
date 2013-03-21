@@ -1,34 +1,17 @@
+import utils
 from game.nodes.base import Base as GameBase
 
 
 class Base( GameBase ):
-        
-    def ValidateDragDrop( self, dragComp, dropComp ):
-        return False
-    
-    def GetId( self ):
-        if self.data in base.scene.comps:
-            return base.scene.comps[self.data]
-        
-        return None
-    
-    def SetId( self, id ):
-        base.scene.comps[self.data] = id
     
     def GetName( self ):
         try:
             return self.data.getName()
         except:
-            return type( self.data ).__name__
-    
-    def GetParent( self ):
-        return base.scene
-    
-    def GetAddons( self ):
-        return []
-    
-    def GetChildren( self ):
-        return [] 
+            return utils.GetLowerCamelCase( type( self.data ).__name__ )
+        
+    def ValidateDragDrop( self, dragComp, dropComp ):
+        return False
         
     def GetPropertyData( self ):
         propDict = {}
@@ -107,9 +90,10 @@ class Base( GameBase ):
         return cnnctns
     
     def SetDefaultValues( self ):
-        
-        # Set default parent.
-        base.scene.RegisterComponent( self.data )
+        pass
         
     def IsSaveable( self ):
         return True
+    
+    def GetDefaultParent( self ):
+        return base.scene

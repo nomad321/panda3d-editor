@@ -1,39 +1,41 @@
 import os
 
 import wx
-import wx.lib.agw.floatspin as fs
 import wx.lib.mixins.listctrl as listmix
 import pandac.PandaModules as pm
 from panda3d.core import Filename
 
 from wxExtra import wxpg, CompositeDropTarget, utils as wxUtils
-
+from wxExtra import CustomListCtrl
+    
 
 class Float3Property( wxpg.BaseProperty ):
     
     def __init__( self, *args, **kwargs ):
         wxpg.BaseProperty.__init__( self, *args, **kwargs )
         
-        self._ctrls = []
         self._count = 3
         self._cast = pm.Vec3 # HAXXOR
         
-    def BuildControl( self, parent, id ):
-        ctrl = wx.BoxSizer( wx.HORIZONTAL )
+    def BuildControl( self, parent ):
+        bs = wx.BoxSizer( wx.HORIZONTAL )
         for i in range( self._count ):
-            spin = fs.FloatSpin( parent, id, value=self._value[i], digits=3 )
-            spin.Enable( self.IsEnabled() )
-            spin.Bind( fs.EVT_FLOATSPIN, self.OnChanged )
-            ctrl.Add( spin, 1, wx.EXPAND )
-            self._ctrls.append( spin )
-        
-        return ctrl
+            rndValue = round( self._value[i], 3 )
+            ctrl = wx.TextCtrl( parent, i, value=str( rndValue ), 
+                                validator=wxpg.FloatValidator() )
+            self.AppendControl( ctrl )
+            bs.Add( ctrl, 1, wx.EXPAND )
+        return bs
     
     def SetValueFromEvent( self, evt ):
-        ctrl = evt.GetEventObject()
-        index = self._ctrls.index( ctrl )
         self._value = self._cast( self._value )
-        self._value[index] = ctrl.GetValue()
+        ctrl = evt.GetEventObject()
+        index = ctrl.GetId()
+        try:
+            val = float( ctrl.GetValue() )
+        except ValueError:
+            val = 0
+        self._value[index] = val
         
 
 class Float2Property( Float3Property ):
@@ -104,13 +106,13 @@ class FilePathProperty( wxpg.StringProperty ):
 
 class NodePathProperty( wxpg.StringProperty ):
     
-    def BuildControl( self, parent, id ):
+    def BuildControl( self, parent ):
         np = self.GetValue()
         text = ''
         if np is not None:
             text = np.getName()
         
-        ctrl = wx.TextCtrl( parent, id, value=text )
+        ctrl = wx.TextCtrl( parent, -1, value=text )
         ctrl.Bind( wx.EVT_TEXT, self.OnChanged )
         
         dt = CompositeDropTarget( ['nodePath', 'filePath'], 
@@ -132,10 +134,10 @@ class NodePathProperty( wxpg.StringProperty ):
 
 class ConnectionBaseProperty( wxpg.BaseProperty ):
     
-    def BuildControl( self, parent, id, height ):
-        ctrl = wx.ListBox( parent, id, size=wx.Size( -1, height ), style=wx.LB_EXTENDED )
+    def BuildControl( self, parent, height ):
+        ctrl = wx.ListBox( parent, -1, size=wx.Size( -1, height ), style=wx.LB_EXTENDED )
         ctrl.Enable( self.IsEnabled() )
-        ctrl.Bind( wx.EVT_KEY_UP, self.OnDelete )
+        ctrl.Bind( wx.EVT_KEY_UP, self.OnKeyUp )
         
         dt = CompositeDropTarget( ['nodePath'], 
                                   self.OnDropItem, 
@@ -143,6 +145,9 @@ class ConnectionBaseProperty( wxpg.BaseProperty ):
         ctrl.SetDropTarget( dt )
         
         return ctrl
+    
+    def OnKeyUp( self, evt ):
+        pass
     
     def ValidateDropItem( self, x, y ):
         for comp in wx.GetApp().frame.pnlSceneGraph.dragNps:
@@ -156,9 +161,9 @@ class ConnectionBaseProperty( wxpg.BaseProperty ):
 
 class ConnectionProperty( ConnectionBaseProperty ):
     
-    def BuildControl( self, parent, id ):
+    def BuildControl( self, parent ):
         height = parent.GetSize()[1]
-        ctrl = ConnectionBaseProperty.BuildControl( self, parent, id, height )
+        ctrl = ConnectionBaseProperty.BuildControl( self, parent, height )
         
         comp = self.GetValue()
         if comp is not None:
@@ -168,7 +173,7 @@ class ConnectionProperty( ConnectionBaseProperty ):
         
         return ctrl
         
-    def OnDelete( self, evt ):
+    def OnKeyUp( self, evt ):
         if evt.GetKeyCode() not in [wx.WXK_DELETE, wx.WXK_BACK]:
             return
         
@@ -183,8 +188,8 @@ class ConnectionProperty( ConnectionBaseProperty ):
 
 class ConnectionListProperty( ConnectionBaseProperty ):
     
-    def BuildControl( self, parent, id ):
-        ctrl = ConnectionBaseProperty.BuildControl( self, parent, id, -1 )
+    def BuildControl( self, parent ):
+        ctrl = ConnectionBaseProperty.BuildControl( self, parent, -1 )
         
         comps = self.GetValue()
         if comps is not None:
@@ -194,7 +199,7 @@ class ConnectionListProperty( ConnectionBaseProperty ):
         
         return ctrl
     
-    def OnDelete( self, evt ):
+    def OnKeyUp( self, evt ):
         """
         Remove those components that were selected in the list box from this
         property's value.
@@ -203,8 +208,7 @@ class ConnectionListProperty( ConnectionBaseProperty ):
             return
         
         lb = evt.GetEventObject()
-        indices = lb.GetSelections()
-        delComps = [lb.GetClientData( index ) for index in indices]
+        delComps = [lb.GetClientData( index ) for index in lb.GetSelections()]
         oldComps = self.GetValue()
         newComps = [comp for comp in oldComps if comp not in delComps]
         self.SetValue( newComps )
@@ -219,21 +223,14 @@ class ConnectionListProperty( ConnectionBaseProperty ):
         self.PostChangedEvent()
         
 
-class AutoWidthListCtrl( wx.ListCtrl, listmix.ListCtrlAutoWidthMixin ):
-
-    def __init__( self, *args, **kwargs ):
-        wx.ListCtrl.__init__( self, *args, **kwargs )
-        listmix.ListCtrlAutoWidthMixin.__init__( self )
-        
-
 class DictProperty( wxpg.BaseProperty ):
     
-    def BuildControl( self, parent, id ):
-        ctrl = AutoWidthListCtrl( parent, id, style=wx.LC_REPORT | wx.LC_EDIT_LABELS )
+    def BuildControl( self, parent ):
+        ctrl = CustomListCtrl( parent, -1, style=wx.LC_REPORT | wx.LC_EDIT_LABELS )
         ctrl.InsertColumn( 0, 'Name' )
         ctrl.InsertColumn( 1, 'Value' )
         ctrl.Enable( self.IsEnabled() )
-        ctrl.Bind( wx.EVT_KEY_UP, self.OnDelete )
+        ctrl.Bind( wx.EVT_KEY_UP, self.OnKeyUp )
         ctrl.Bind( wx.EVT_LIST_END_LABEL_EDIT, self.OnListEndLabelEdit )
         
         dt = CompositeDropTarget( ['filePath'], 
@@ -250,8 +247,20 @@ class DictProperty( wxpg.BaseProperty ):
     def ValidateDropItem( self, x, y ):
         return True
     
-    def OnDelete( self, evt ):
-        pass
+    def OnKeyUp( self, evt ):
+        if evt.GetKeyCode() not in [wx.WXK_DELETE, wx.WXK_BACK]:
+            return
+        
+        # Get the names of the items selected, then remove these keys from 
+        # the dictionary.
+        ctrl = evt.GetEventObject()
+        keys = [item.GetText() for item in ctrl.GetAllItems()]
+        myDict = dict( self.GetValue() )
+        for index in ctrl.GetSelections():
+            del myDict[keys[index]]
+        
+        self.SetValue( myDict )
+        self.PostChangedEvent()
     
     def OnDropItem( self, arg ):
         myDict = dict( self.GetValue() )
